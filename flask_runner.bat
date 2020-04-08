@@ -1,0 +1,1 @@
+activate opy37 && python main.py
