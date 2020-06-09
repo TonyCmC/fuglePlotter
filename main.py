@@ -5,6 +5,7 @@ import logging
 import os
 import re
 
+import requests
 import telegram
 from flask import Flask, request, abort, jsonify, redirect
 from telegram.ext import Dispatcher, MessageHandler, Filters
@@ -42,6 +43,12 @@ line_bot_api = LineBotApi(config['LINE']['LINE_BOT_API'])
 handler = WebhookHandler(config['LINE']['LINE_BOT_SECRET'])
 
 
+def init_telegram_webhook():
+    url = "https://api.telegram.org/bot{tgbot_token}/setWebhook?url={hook_url}/hook".format(tgbot_token=config['TELEGRAM']['ACCESS_TOKEN'], hook_url=server_url)
+    res = requests.get(url)
+    print(res.text)
+
+
 @app.route('/hook', methods=['POST'])
 def webhook_handler():
     """Set route /hook with POST method will trigger this method."""
@@ -53,20 +60,43 @@ def webhook_handler():
     return 'ok'
 
 
+def get_stock_id(input_text):
+    stock_dict: dict
+    num_list = [a for a in range(0, 10)]
+    str_num_list = [str(a) for a in range(0, 10)]
+    stock_dict = json.load(open('stock.json', encoding='utf-8'))
+    stock_dict_flip = dict((v, k) for k, v in stock_dict.items())
+
+    res_d = re.search(r'^[p|P](\S+.)', input_text)
+    if res_d is None:
+        return False
+    result = res_d.group(1)
+    if result[0] in num_list or result[0] in str_num_list:
+        if result in stock_dict.keys():
+            return result
+    else:
+        if result in stock_dict_flip.keys():
+            return stock_dict_flip.get(result)
+
+    return False
+
 def reply_handler(bot, update):
     """Reply message."""
     text = update.message.text
-    res = re.search(r'^(p|P)(\S+.)', text)
-    if len(text) > 0 and res is not None:
-        f_name = ('%032x' % int(datetime.datetime.now().timestamp()))[-10:]
-        stock_id = res.group(2)
-        klp = KLinePlotter(stock_id, f_name)
-        file_name = stock_id + '-' + f_name
-        klp.draw_plot()
-        img_url = server_url + '/images/{file_name}.png'.format(file_name=file_name)
-        lower_img_url = server_url + '/images/lower_{file_name}.png'.format(file_name=file_name)
-        update.message.reply_photo(photo=open('images/{file_name}.png'.format(file_name=file_name), 'rb'))
-
+    try:
+        if 10 > len(text) > 0:
+            f_name = ('%032x' % int(datetime.datetime.now().timestamp()))[-10:]
+            stock_id = get_stock_id(text)
+            if stock_id is False:
+                raise ValueError('查無股票代號 / 名稱, Invalid Stock Name / Id.')
+            klp = KLinePlotter(stock_id, f_name)
+            file_name = stock_id + '-' + f_name
+            klp.draw_plot()
+            img_url = server_url + '/images/{file_name}.png'.format(file_name=file_name)
+            lower_img_url = server_url + '/images/lower_{file_name}.png'.format(file_name=file_name)
+            update.message.reply_photo(photo=open('images/{file_name}.png'.format(file_name=file_name), 'rb'))
+    except ValueError as e:
+        update.message.reply_text(e.args)
 
 
 
@@ -101,17 +131,21 @@ def callback():
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     text = event.message.text
-    res = re.search(r'^(p|P)(\S+.)', text)
-    if len(text) > 0 and res is not None:
-        f_name = ('%032x' % int(datetime.datetime.now().timestamp()))[-10:]
-        stock_id = res.group(2)
-        klp = KLinePlotter(stock_id, f_name)
-        file_name = stock_id + '-' + f_name
-        klp.draw_plot()
-        img_url = server_url + '/images/{file_name}.png'.format(file_name=file_name)
-        lower_img_url = server_url + '/images/lower_{file_name}.png'.format(file_name=file_name)
-        line_bot_api.reply_message(event.reply_token,
-                                   ImageSendMessage(original_content_url=img_url, preview_image_url=lower_img_url))
+    try:
+        if 10 > len(text) > 0:
+            f_name = ('%032x' % int(datetime.datetime.now().timestamp()))[-10:]
+            stock_id = get_stock_id(text)
+            if stock_id is False:
+                raise ValueError('查無股票代號 / 名稱, Invalid Stock Name / Id.')
+            klp = KLinePlotter(stock_id, f_name)
+            file_name = stock_id + '-' + f_name
+            klp.draw_plot()
+            img_url = server_url + '/images/{file_name}.png'.format(file_name=file_name)
+            lower_img_url = server_url + '/images/lower_{file_name}.png'.format(file_name=file_name)
+            line_bot_api.reply_message(event.reply_token,
+                                       ImageSendMessage(original_content_url=img_url, preview_image_url=lower_img_url))
+    except ValueError as e:
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=str(e.args)))
 
 
 @app.route("/getStockGraph", methods=['GET'])
@@ -132,6 +166,8 @@ def get_stock_graph():
         return jsonify({'result': '1', 'message': 'stock_id Not Found'})
 
 
+init_telegram_webhook()
+
 if __name__ == "__main__":
     # Running server
-    app.run()
+    app.run(host='0.0.0.0', port=5678)

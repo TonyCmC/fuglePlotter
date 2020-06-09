@@ -75,7 +75,7 @@ Send2Trash==1.5.0
 shellescape==3.4.1
 six==1.12.0
 sseclient==0.0.24
-TA-Lib==0.4.17
+TA-Lib==0.4.18
 terminado==0.8.3
 testpath==0.4.4
 tornado==6.0.4
