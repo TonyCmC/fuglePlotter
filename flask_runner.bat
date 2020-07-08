@@ -1,1 +1,1 @@
-activate opy37 && python main.py
+activate pyvenv37 && python main.py
