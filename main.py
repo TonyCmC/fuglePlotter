@@ -175,7 +175,7 @@ def get_stock_graph():
         klp.draw_plot()
         img_url = server_url + '/images/{file_name}.png'.format(file_name=file_name)
         lower_img_url = server_url + '/images/lower_{file_name}.png'.format(file_name=file_name)
-        return redirect(lower_img_url)
+        return redirect(img_url)
     else:
         return jsonify({'result': '1', 'message': 'stock_id Not Found'})
 
@@ -184,4 +184,4 @@ init_telegram_webhook()
 
 if __name__ == "__main__":
     # Running server
-    app.run(host='0.0.0.0', port=5678)
+    app.run(host='0.0.0.0', port=5678, ssl_context='adhoc')
