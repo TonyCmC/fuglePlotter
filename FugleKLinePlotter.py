@@ -88,7 +88,6 @@ class FugleKLinePlotter:
 
     def draw_plot(self):
         arranged_dict = self.get_price_plot()
-        print(arranged_dict)
         df = pd.DataFrame(arranged_dict)
 
         fig = plt.figure(figsize=(10, 8))
