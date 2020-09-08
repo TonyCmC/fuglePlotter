@@ -15,6 +15,8 @@ class KLinePlotter:
     plt.rcParams['font.sans-serif'] = ['Microsoft JhengHei']
     plt.rcParams['axes.unicode_minus'] = False
     plt.rcParams['axes.titlesize'] = 20
+    plt.style.use('dark_background')
+
     api_url = 'https://ws.api.cnyes.com/charting/api/v1/history?'
 
     def __init__(self, stock_id, f_name):
@@ -96,10 +98,10 @@ class KLinePlotter:
         ax.set_ylim(round(self.last_closed * 0.9, 2), round(self.last_closed * 1.1, 2))
 
         mpf.candlestick2_ohlc(ax, df['open'], df['high'], df['low'], df['close'],
-                              width=0.6, colorup='r', colordown='g', alpha=0.75)
+                              width=0.6, colorup='r', colordown='lime', alpha=0.75)
 
         mpf.volume_overlay(ax2, df['open'], df['close'], df['volume'],
-                           colorup='r', colordown='g', width=0.5, alpha=0.8)
+                           colorup='r', colordown='lime', width=0.5, alpha=0.8)
 
         # 畫均線圖
         sma_5 = abstract.SMA(df, 5)
@@ -111,34 +113,34 @@ class KLinePlotter:
         current_closed_price = current_price_list[len(current_price_list) - 1]
 
         if current_closed_price > self.last_closed:
-            title_color = 'r'
-            title_mark = '▲'
+            stock_color = 'r'
+            stock_mark = '▲'
         elif current_closed_price < self.last_closed:
-            title_color = 'g'
-            title_mark = '▼'
+            stock_color = 'lime'
+            stock_mark = '▼'
         else:
-            title_color = 'black'
-            title_mark = '-'
+            stock_color = 'ivory'
+            stock_mark = '-'
 
         current_volume_list = [x for x in arranged_dict['volume'] if x is not None]
 
         title_diff = round(current_closed_price - self.last_closed, 2)
         title_diff_percent = round(title_diff / self.last_closed * 100, 2)
 
-        title = '{name}({id})                               {time}     ' \
-                '成交量: {volume}\n{price}   {mark}{diff} ({percent}%)'.format(name=stock_name,
+        title = '{name}({id})                               {time}     \n'.format(name=stock_name,
                                                                             id=self.stock_id,
-                                                                            time=self.market_time,
+                                                                            time=self.market_time)
+        sub_title = '{price}   {mark}{diff} ({percent}%)                             成交量: {volume}'.format(
                                                                             volume=str(int(sum(current_volume_list))),
                                                                             price=current_closed_price,
-                                                                            mark=title_mark,
+                                                                            mark=stock_mark,
                                                                             diff=title_diff,
                                                                             percent=title_diff_percent)
-
-        title_obj = ax.set_title(title, loc='Left')
+        plt.suptitle(sub_title,x=0.385, y=0.93, size='xx-large', color=stock_color)
+        title_obj = ax.set_title(title, loc='Left', pad=0.5)
         # plt.getp(title_obj)  # print out the properties of title
         # plt.getp(title_obj, 'text')  # print out the 'text' property for title
-        plt.setp(title_obj, color=title_color)  # set the color of title to red
+        plt.setp(title_obj, color='ivory')  # set the color of title to red
         ax.legend(fontsize='x-large')
         file_name = self.stock_id + '-' + self.f_name
         fig.savefig('images/lower_{file_name}.png'.format(file_name=file_name), dpi=100)

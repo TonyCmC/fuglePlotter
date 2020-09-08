@@ -21,7 +21,7 @@ from linebot.models import (
     ImageSendMessage)
 
 # Load data from config.ini file
-from KLinePlotter import KLinePlotter
+from FugleKLinePlotter import FugleKLinePlotter
 
 config = configparser.ConfigParser()
 config.read('config.ini')
@@ -46,9 +46,10 @@ STATUS_ID_NOT_FOUND = '1'
 STATUS_PASS = '2'
 
 def init_telegram_webhook():
-    url = "https://api.telegram.org/bot{tgbot_token}/setWebhook?url={hook_url}/hook".format(tgbot_token=config['TELEGRAM']['ACCESS_TOKEN'], hook_url=server_url)
-    res = requests.get(url)
-    print(res.text)
+    if '127.0.0.1' not in config['SERVER']['SERVER_URL']:
+        url = "https://api.telegram.org/bot{tgbot_token}/setWebhook?url={hook_url}/hook".format(tgbot_token=config['TELEGRAM']['ACCESS_TOKEN'], hook_url=server_url)
+        res = requests.get(url)
+        print(res.text)
 
 
 @app.route('/hook', methods=['POST'])
@@ -101,7 +102,7 @@ def reply_handler(bot, update):
             if stock_id == STATUS_ID_NOT_FOUND:
                 raise ValueError('查無股票代號 / 名稱, Invalid Stock Name / Id.')
             if stock_id != STATUS_PASS:
-                klp = KLinePlotter(stock_id, f_name)
+                klp = FugleKLinePlotter(stock_id, f_name)
                 file_name = stock_id + '-' + f_name
                 klp.draw_plot()
                 img_url = server_url + '/images/{file_name}.png'.format(file_name=file_name)
@@ -151,7 +152,7 @@ def handle_message(event):
             if stock_id == STATUS_ID_NOT_FOUND:
                 raise ValueError('查無股票代號 / 名稱, Invalid Stock Name / Id.')
             if stock_id != STATUS_PASS:
-                klp = KLinePlotter(stock_id, f_name)
+                klp = FugleKLinePlotter(stock_id, f_name)
                 file_name = stock_id + '-' + f_name
                 klp.draw_plot()
                 img_url = server_url + '/images/{file_name}.png'.format(file_name=file_name)
@@ -170,7 +171,7 @@ def get_stock_graph():
     if len(stock_id) > 0 and res is not None:
         f_name = ('%032x' % int(datetime.datetime.now().timestamp()))[-10:]
         stock_id = res.group(1)
-        klp = KLinePlotter(stock_id, f_name)
+        klp = FugleKLinePlotter(stock_id, f_name)
         file_name = stock_id + '-' + f_name
         klp.draw_plot()
         img_url = server_url + '/images/{file_name}.png'.format(file_name=file_name)
@@ -184,4 +185,4 @@ init_telegram_webhook()
 
 if __name__ == "__main__":
     # Running server
-    app.run(host='0.0.0.0', port=5678, ssl_context='adhoc')
+    app.run(host='0.0.0.0', port=5678)
