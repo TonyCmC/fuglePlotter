@@ -33,6 +33,7 @@ class FugleKLinePlotter:
         self.last_closed = 0.0
         self.highest_price = 0.0
         self.lowest_price = 0.0
+        self.is_stock = True
         self.get_price_plot()
         self.get_price_info_of_stock()
 
@@ -57,7 +58,10 @@ class FugleKLinePlotter:
             high_arr.append(price_set.get(time_spot).get('high'))
             low_arr.append(price_set.get(time_spot).get('low'))
             close_arr.append(price_set.get(time_spot).get('close'))
-            volume_arr.append(price_set.get(time_spot).get('unit'))
+            if self.is_stock:
+                volume_arr.append(price_set.get(time_spot).get('unit'))
+            else:
+                volume_arr.append(price_set.get(time_spot).get('volume'))
 
         arranged_dict = {
             "time": time_arr,
@@ -78,6 +82,8 @@ class FugleKLinePlotter:
         self.last_closed = float(round(data.get('data').get('meta').get('priceReference'), 2))
         self.highest_price = float(round(data.get('data').get('meta').get('priceHighLimit'), 2))
         self.lowest_price = float(round(data.get('data').get('meta').get('priceLowLimit'), 2))
+        if 'volumePerUnit' not in data.get('data').get('meta').keys():
+            self.is_stock = False
 
     def isoformat_transfer(self, datetime_string):
         # datetime.datetime.strptime("2020-09-01T01:01:00.000Z", "%Y-%m-%dT%H:%M:%S.%fZ")
