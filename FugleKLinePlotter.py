@@ -80,8 +80,10 @@ class FugleKLinePlotter:
         data = json.loads(res.text)
         self.stock_name = data.get('data').get('meta').get('nameZhTw')
         self.last_closed = float(round(data.get('data').get('meta').get('priceReference'), 2))
-        self.highest_price = float(round(data.get('data').get('meta').get('priceHighLimit'), 2))
-        self.lowest_price = float(round(data.get('data').get('meta').get('priceLowLimit'), 2))
+        self.highest_price = float(round(data.get('data').get('meta').get('priceHighLimit') or round(float(self.last_closed) * 1.1, 2)))
+        self.lowest_price = float(round(data.get('data').get('meta').get('priceLowLimit') or round(float(self.last_closed) * 0.9, 2)))
+        print('self.highest_price: ', self.highest_price)
+        print('self.lowest_price: ', self.lowest_price)
         if 'volumePerUnit' not in data.get('data').get('meta').keys():
             self.is_stock = False
 
@@ -94,6 +96,14 @@ class FugleKLinePlotter:
 
     def draw_plot(self):
         arranged_dict = self.get_price_plot()
+        print(arranged_dict)
+
+        if self.is_stock is False:
+            if self.highest_price < max(arranged_dict.get('close')):
+                self.highest_price = max(arranged_dict.get('close'))
+            if self.lowest_price > min(arranged_dict.get('close')):
+                self.lowest_price = min(arranged_dict.get('close'))
+
         df = pd.DataFrame(arranged_dict)
 
         fig = plt.figure(figsize=(10, 8))
@@ -104,6 +114,7 @@ class FugleKLinePlotter:
 
         ax2.set_xticks(range(0, 270, 54))
         ax2.set_xticklabels(['09', '10', '11', '12', '13'])
+
         ax.set_ylim(round(self.lowest_price, 2), round(self.highest_price, 2))
 
         mpf.candlestick2_ohlc(ax, df['open'], df['high'], df['low'], df['close'],
@@ -115,9 +126,14 @@ class FugleKLinePlotter:
         # 畫均線圖
         sma_5 = abstract.SMA(df, 5)
         sma_30 = abstract.SMA(df, 30)
+
+        # 開盤價水平線
         ax.plot([0, 270], [self.last_closed, self.last_closed])
+
+        # 5MA + 30MA
         ax.plot(sma_5, label='5MA')
         ax.plot(sma_30, label='30MA')
+
         current_price_list = [x for x in arranged_dict['close'] if x is not None]
         current_closed_price = current_price_list[len(current_price_list) - 1]
 

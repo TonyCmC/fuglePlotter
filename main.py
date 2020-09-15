@@ -162,7 +162,6 @@ def handle_message(event):
     except ValueError as e:
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=str(e.args)))
 
-
 @app.route("/getStockGraph", methods=['GET'])
 def get_stock_graph():
     stock_id = request.args.get('stock_id')
@@ -185,4 +184,4 @@ init_telegram_webhook()
 
 if __name__ == "__main__":
     # Running server
-    app.run(host='0.0.0.0', port=5678)
+    app.run(host=config['HOST']['HOST'], port=config['HOST']['PORT'], debug=True)
