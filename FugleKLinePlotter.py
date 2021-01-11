@@ -75,20 +75,23 @@ class FugleKLinePlotter:
 
     def get_price_info_of_stock(self):
         api_for_stock = self.api_url + '/meta?symbolId={stock}&apiToken={token}'.format(stock=self.stock_id,
-                                                                                         token=config['FUGLE']['TOKEN'])
+                                                                                        token=config['FUGLE']['TOKEN'])
         res = requests.get(api_for_stock)
         data = json.loads(res.text)
         self.stock_name = data.get('data').get('meta').get('nameZhTw')
         self.last_closed = float(round(data.get('data').get('meta').get('priceReference'), 2))
-        self.highest_price = float(round(data.get('data').get('meta').get('priceHighLimit') or round(float(self.last_closed) * 1.1, 2)))
-        self.lowest_price = float(round(data.get('data').get('meta').get('priceLowLimit') or round(float(self.last_closed) * 0.9, 2)))
+        self.highest_price = float(round(data.get('data').get('meta').get('priceHighLimit') or
+                                   round(float(self.last_closed) * 1.1, 2)))
+        self.lowest_price = float(round(data.get('data').get('meta').get('priceLowLimit') or
+                                  round(float(self.last_closed) * 0.9, 2)))
         print('self.highest_price: ', self.highest_price)
         print('self.lowest_price: ', self.lowest_price)
-        if 'volumePerUnit' not in data.get('data').get('meta').keys():
+
+        # 針對興櫃公司 or 無昨收的股票(通常為第一天興櫃之類的) 處理
+        if 'volumePerUnit' not in data.get('data').get('meta').keys() or self.last_closed == 0:
             self.is_stock = False
 
     def isoformat_transfer(self, datetime_string):
-        # datetime.datetime.strptime("2020-09-01T01:01:00.000Z", "%Y-%m-%dT%H:%M:%S.%fZ")
         raw_datetime = datetime.datetime.strptime(datetime_string, "%Y-%m-%dT%H:%M:%S.%fZ")
         raw_datetime += datetime.timedelta(hours=8)
         parsed_datetime_string = raw_datetime.strftime('%Y-%m-%d %H:%M:%S')
@@ -97,6 +100,10 @@ class FugleKLinePlotter:
     def draw_plot(self):
         arranged_dict = self.get_price_plot()
         print(arranged_dict)
+
+        # 針對第一次興櫃公司處理 (無last_closed資訊則用開盤價當作基準)
+        if self.last_closed == 0:
+            self.last_closed = arranged_dict.get('open')[0]
 
         if self.is_stock is False:
             if self.highest_price < max(arranged_dict.get('close')):
