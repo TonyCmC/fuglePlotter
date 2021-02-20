@@ -1,10 +1,12 @@
 from apscheduler.schedulers.blocking import BlockingScheduler
+from US10YCrawler import US10YCrawler
+from apscheduler.triggers.cron import CronTrigger
 
-from Services.CostcoCrawler import CostcoCrawler
 
-ccl = CostcoCrawler()
+us10y = US10YCrawler()
 
 scheduler = BlockingScheduler()
+cron1 = CronTrigger(day_of_week='mon-fri', hour='8', minute='45', timezone='Asia/Taipei')
 
-scheduler.add_job(ccl.crawler, 'interval', id='crawl_every_hour', minutes=30)
+scheduler.add_job(us10y.get_us_10y, cron1)
 scheduler.start()

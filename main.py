@@ -21,6 +21,7 @@ from linebot.models import (
     ImageSendMessage)
 
 # Load data from config.ini file
+from DailyKLinePlotter import DailyKLinePlotter
 from FugleKLinePlotter import FugleKLinePlotter
 
 config = configparser.ConfigParser()
@@ -65,6 +66,12 @@ def webhook_handler():
     return 'ok'
 
 
+def get_match_result(input_text):
+    match = re.search(r'^([p|P|q|Q|k|K])(\S{2,10})', input_text)
+    if match is not None:
+        return match
+
+
 def get_stock_id(input_text):
     """
     用輸入的字串取股票代號，或用股票名字取股票代號
@@ -77,11 +84,11 @@ def get_stock_id(input_text):
     stock_dict = json.load(open('stock.json', encoding='utf-8'))
     stock_dict_flip = dict((v, k) for k, v in stock_dict.items())
 
-    match = re.search(r'^[/|p|P](\S+.)', input_text)
+    match = re.search(r'^([p|P|q|Q|k|K])(\S{2,10})', input_text)
     if match is None:
         return STATUS_PASS
     try:
-        result = match.group(1)
+        result = match.group(2)
         if result[0] in num_list or result[0] in str_num_list:
             if result in stock_dict.keys():
                 return result
@@ -101,15 +108,21 @@ def reply_handler(bot, update):
         if 10 > len(text) > 0:
             f_name = ('%032x' % int(datetime.datetime.now().timestamp()))[-10:]
             stock_id = get_stock_id(text)
+            match = get_match_result(text)
             if stock_id == STATUS_ID_NOT_FOUND:
                 raise ValueError('查無股票代號 / 名稱, Invalid Stock Name / Id.')
             if stock_id != STATUS_PASS:
                 klp = FugleKLinePlotter(stock_id, f_name)
                 file_name = stock_id + '-' + f_name
-                klp.draw_plot()
-                img_url = server_url + '/images/{file_name}.png'.format(file_name=file_name)
-                lower_img_url = server_url + '/images/lower_{file_name}.png'.format(file_name=file_name)
-                update.message.reply_photo(photo=open('images/{file_name}.png'.format(file_name=file_name), 'rb'))
+                if match.group(1).lower() == 'p':
+                    klp.draw_plot()
+                    update.message.reply_photo(photo=open('images/{file_name}.png'.format(file_name=file_name), 'rb'))
+                elif match.group(1).lower() == 'q':
+                    update.message.reply_text(klp.get_best_five_quote())
+                elif match.group(1).lower() == 'k':
+                    dlp = DailyKLinePlotter(stock_id, f_name)
+                    dlp.draw_plot()
+                    update.message.reply_photo(photo=open('images/{file_name}.png'.format(file_name=file_name), 'rb'))
     except ValueError as e:
         update.message.reply_text(e.args)
     except Exception as ex:
@@ -150,17 +163,30 @@ def handle_message(event):
         if 10 > len(text) > 0:
             f_name = ('%032x' % int(datetime.datetime.now().timestamp()))[-10:]
             stock_id = get_stock_id(text)
+            match = get_match_result(text)
             if stock_id == STATUS_ID_NOT_FOUND:
                 raise ValueError('查無股票代號 / 名稱, Invalid Stock Name / Id.')
             if stock_id != STATUS_PASS:
                 klp = FugleKLinePlotter(stock_id, f_name)
                 file_name = stock_id + '-' + f_name
-                klp.draw_plot()
-                img_url = server_url + '/images/{file_name}.png'.format(file_name=file_name)
-                lower_img_url = server_url + '/images/lower_{file_name}.png'.format(file_name=file_name)
-                line_bot_api.reply_message(event.reply_token,
-                                           ImageSendMessage(original_content_url=img_url,
-                                                            preview_image_url=lower_img_url))
+                if match.group(1).lower() == 'p':
+                    klp.draw_plot()
+                    img_url = server_url + '/images/{file_name}.png'.format(file_name=file_name)
+                    lower_img_url = server_url + '/images/lower_{file_name}.png'.format(file_name=file_name)
+                    line_bot_api.reply_message(event.reply_token,
+                                               ImageSendMessage(original_content_url=img_url,
+                                                                preview_image_url=lower_img_url))
+                elif match.group(1).lower() == 'q':
+                    line_bot_api.reply_message(event.reply_token,
+                                               TextSendMessage(klp.get_best_five_quote()))
+                elif match.group(1).lower() == 'k':
+                    dlp = DailyKLinePlotter(stock_id, f_name)
+                    dlp.draw_plot()
+                    img_url = server_url + '/images/{file_name}.png'.format(file_name=file_name)
+                    lower_img_url = server_url + '/images/lower_{file_name}.png'.format(file_name=file_name)
+                    line_bot_api.reply_message(event.reply_token,
+                                               ImageSendMessage(original_content_url=img_url,
+                                                                preview_image_url=lower_img_url))
     except ValueError as e:
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=str(e.args)))
 
@@ -168,14 +194,23 @@ def handle_message(event):
 @app.route("/getStockGraph", methods=['GET'])
 def get_stock_graph():
     stock_id = request.args.get('stock_id')
+    plot_type = request.args.get('plot_type')
+    if plot_type is None:
+        plot_type = 'm'
+
     res = re.search(r'^(\S+.)', stock_id)
 
     if len(stock_id) > 0 and res is not None:
         f_name = ('%032x' % int(datetime.datetime.now().timestamp()))[-10:]
         stock_id = res.group(1)
-        klp = FugleKLinePlotter(stock_id, f_name)
-        file_name = stock_id + '-' + f_name
-        klp.draw_plot()
+        if plot_type == 'm':
+            klp = FugleKLinePlotter(stock_id, f_name)
+            file_name = stock_id + '-' + f_name
+            klp.draw_plot()
+        else:
+            dlp = DailyKLinePlotter(stock_id, f_name)
+            file_name = stock_id + '-' + f_name
+            dlp.draw_plot()
         img_url = server_url + '/images/{file_name}.png'.format(file_name=file_name)
         return redirect(img_url)
     else:
@@ -186,4 +221,4 @@ init_telegram_webhook()
 
 if __name__ == "__main__":
     # Running server
-    app.run(host=config['HOST']['HOST'], port=config['HOST']['PORT'], debug=True)
+    app.run(host=config['HOST']['HOST'], port=config['HOST']['PORT'])
