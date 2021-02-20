@@ -1,6 +1,9 @@
 import configparser
 import datetime
 import json
+import operator
+import re
+
 import requests
 import pandas as pd
 import numpy as np
@@ -37,59 +40,168 @@ class FugleKLinePlotter:
         self.get_price_plot()
         self.get_price_info_of_stock()
 
+    def request_factory(self, api_url, params=''):
+        if params == '':
+            params = {
+                'symbolId': self.stock_id,
+                'apiToken': config['FUGLE']['TOKEN']
+            }
+        res = requests.get(api_url, params=params)
+        self.logger(res)
+        return res.text
+
+    def get_endpoint_of_url(self, url):
+        match = re.search(r'/(\w+)\?', url)
+        return match.group(1)
+
+    def logger(self, res_obj):
+        res = res_obj
+        today_date = datetime.datetime.today().strftime('%Y-%m-%d')
+        filename = 'logs/{date}-fugle-{filename}.log'.format(date=today_date,
+                                                              filename=self.get_endpoint_of_url(res.url))
+        with open(filename, mode='a', encoding='utf-8') as f:
+            now_timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            f.write('=====================================\n')
+            f.write("[{0}]".format(now_timestamp) + '\n')
+            f.write("requests url: {0}".format(res.url) + '\n')
+            f.write('response: \n' + res.text + '\n')
+            f.write('=====================================' + '\n')
+
     def get_price_plot(self):
-        api_for_stock = self.api_url + '/chart?symbolId={stock}&apiToken={token}'.format(stock=self.stock_id,
-                                                                                         token=config['FUGLE']['TOKEN'])
-        res = requests.get(api_for_stock)
-        self.data = json.loads(res.text)
+        api_for_stock = self.api_url + '/chart'
+        res = self.request_factory(api_for_stock)
+        self.data = json.loads(res)
         price_set = self.data.get('data').get('chart')
+        if price_set == {}:
+            arranged_dict = {
+                "time": [],
+                "open": [],
+                "high": [],
+                "low": [],
+                "close": [],
+                "volume": []
+            }
+            return arranged_dict
 
         self.market_time = self.isoformat_transfer(self.data.get('data').get('info').get('lastUpdatedAt'))
 
-        time_arr = []
-        open_arr = []
-        high_arr = []
-        low_arr = []
-        close_arr = []
-        volume_arr = []
-        for time_spot in price_set.keys():
-            time_arr.append(self.isoformat_transfer(time_spot))
-            open_arr.append(price_set.get(time_spot).get('open'))
-            high_arr.append(price_set.get(time_spot).get('high'))
-            low_arr.append(price_set.get(time_spot).get('low'))
-            close_arr.append(price_set.get(time_spot).get('close'))
-            if self.is_stock:
-                volume_arr.append(price_set.get(time_spot).get('unit'))
-            else:
-                volume_arr.append(price_set.get(time_spot).get('volume'))
+        time_series = list(price_set.keys())
+        new_price_dict = {}
 
+        for idx, e in enumerate(time_series):
+            ticker_stack = datetime.timedelta(minutes=1)
+            tmp_price_dict = {}
+            content_stack = price_set.get(e)
+            if 'volume' not in content_stack.keys():
+                content_stack['volume'] = 0
+            if content_stack['volume'] >= 1000:
+                content_stack['volume'] = int(content_stack['volume'] / 1000)
+            if idx == 0:
+                tmp_price_dict[self.isoformat_transfer(time_series[idx])] = content_stack
+            else:
+                # 取上一次內容
+                content_stack = price_set.get(time_series[idx])
+                # 計算 這次減掉上次tick，計算共漏掉幾分鐘
+                ticker_minute_diff = (self.isoformat_to_datetime(time_series[idx]) - self.isoformat_to_datetime(
+                    time_series[idx - 1]) - datetime.timedelta(minutes=1))
+
+                # 遺漏分鐘數不等於一分鐘
+                if ticker_minute_diff != datetime.timedelta(minutes=0):
+                    # 計算遺漏的ticker數量
+                    missing_ticker = ticker_minute_diff / datetime.timedelta(minutes=1)
+                    # 迴圈補遺漏
+                    for tick in range(int(missing_ticker)):
+                        previous_content_stack = price_set.get(time_series[idx - 1])
+                        current_timestamp = (self.isoformat_to_datetime(time_series[idx - 1]) + ticker_stack).strftime(
+                            '%Y-%m-%d %H:%M:%S')
+                        ticker_stack += datetime.timedelta(minutes=1)
+                        previous_content_stack_with_zero_vol = previous_content_stack.copy()
+                        previous_content_stack_with_zero_vol['volume'] = 0
+                        tmp_price_dict[current_timestamp] = previous_content_stack_with_zero_vol
+                tmp_price_dict[self.isoformat_transfer(time_series[idx])] = content_stack
+            new_price_dict.update(tmp_price_dict)
         arranged_dict = {
-            "time": time_arr,
-            "open": open_arr,
-            "high": high_arr,
-            "low": low_arr,
-            "close": close_arr,
-            "volume": volume_arr,
+            "time": list(new_price_dict.keys()),
+            "open": list(map(operator.itemgetter('open'), list(new_price_dict.values()))),
+            "high": list(map(operator.itemgetter('high'), list(new_price_dict.values()))),
+            "low": list(map(operator.itemgetter('low'), list(new_price_dict.values()))),
+            "close": list(map(operator.itemgetter('close'), list(new_price_dict.values()))),
+            "volume": list(map(operator.itemgetter('volume'), list(new_price_dict.values()))),
         }
         return arranged_dict
 
+    def get_best_five_quote(self, data=''):
+        if data == '':
+            api_for_stock = self.api_url + '/quote'
+            res = self.request_factory(api_for_stock)
+            data = json.loads(res)
+
+        arranged_dict = self.get_price_plot()
+
+        if len(arranged_dict['close']) != 0:
+            current_price_list = [x for x in arranged_dict['close'] if x is not None]
+            current_closed_price = current_price_list[len(current_price_list) - 1]
+        else:
+            current_closed_price = self.last_closed
+
+        if current_closed_price > self.last_closed:
+            stock_mark = '▲'
+        elif current_closed_price < self.last_closed:
+            stock_mark = '▼'
+        else:
+            stock_mark = '-'
+
+        current_volume_list = [x for x in arranged_dict['volume'] if x is not None]
+
+        title_diff = round(current_closed_price - self.last_closed, 2)
+        title_diff_percent = round(title_diff / self.last_closed * 100, 2)
+
+        title = '  {name}({id})     {time}\n'.format(name=self.stock_name,
+                                                     id=self.stock_id,
+                                                     time=self.market_time)
+
+        sub_title = '  {price}   {mark}{diff} ({percent}%)    成交量: {volume}\n'.format(
+            volume=str(int(sum(current_volume_list))),
+            price=current_closed_price,
+            mark=stock_mark,
+            diff=title_diff,
+            percent=title_diff_percent)
+        order_list = data.get('data').get('quote').get('order')
+
+        best_asks = order_list.get('bestAsks')
+        best_bids = order_list.get('bestBids')
+        ordered_best_bids = sorted(best_bids, key=operator.itemgetter('price'), reverse=True)
+        result = title + sub_title + '-' * len(title) + '\n'
+        for idx, bid in enumerate(ordered_best_bids):
+            result += '{vol} @ {price}\t|\t{vol_ask} @ {price_ask}\n'.format(vol=str(bid.get('unit')).rjust(5),
+                                                                             price=str(bid.get('price')).ljust(5),
+                                                                             vol_ask=str(
+                                                                                 best_asks[idx].get('unit')).rjust(5),
+                                                                             price_ask=str(
+                                                                                 best_asks[idx].get('price')).ljust(5))
+        return result
+
     def get_price_info_of_stock(self):
-        api_for_stock = self.api_url + '/meta?symbolId={stock}&apiToken={token}'.format(stock=self.stock_id,
-                                                                                        token=config['FUGLE']['TOKEN'])
-        res = requests.get(api_for_stock)
-        data = json.loads(res.text)
+        api_for_stock = self.api_url + '/meta'
+        res = self.request_factory(api_for_stock)
+        data = json.loads(res)
         self.stock_name = data.get('data').get('meta').get('nameZhTw')
         self.last_closed = float(round(data.get('data').get('meta').get('priceReference'), 2))
         self.highest_price = float(round(data.get('data').get('meta').get('priceHighLimit') or
-                                   round(float(self.last_closed) * 1.1, 2)))
+                                         round(float(self.last_closed) * 1.1, 2)))
         self.lowest_price = float(round(data.get('data').get('meta').get('priceLowLimit') or
-                                  round(float(self.last_closed) * 0.9, 2)))
+                                        round(float(self.last_closed) * 0.9, 2)))
         print('self.highest_price: ', self.highest_price)
         print('self.lowest_price: ', self.lowest_price)
 
         # 針對興櫃公司 or 無昨收的股票(通常為第一天興櫃之類的) 處理
         if 'volumePerUnit' not in data.get('data').get('meta').keys() or self.last_closed == 0:
             self.is_stock = False
+
+    def isoformat_to_datetime(self, datetime_string):
+        raw_datetime = datetime.datetime.strptime(datetime_string, "%Y-%m-%dT%H:%M:%S.%fZ")
+        raw_datetime += datetime.timedelta(hours=8)
+        return raw_datetime
 
     def isoformat_transfer(self, datetime_string):
         raw_datetime = datetime.datetime.strptime(datetime_string, "%Y-%m-%dT%H:%M:%S.%fZ")
@@ -99,7 +211,7 @@ class FugleKLinePlotter:
 
     def draw_plot(self):
         arranged_dict = self.get_price_plot()
-        print(arranged_dict)
+        # print(arranged_dict)
 
         # 針對第一次興櫃公司處理 (無last_closed資訊則用開盤價當作基準)
         if self.last_closed == 0:
@@ -125,10 +237,20 @@ class FugleKLinePlotter:
         ax.set_ylim(round(self.lowest_price, 2), round(self.highest_price, 2))
 
         mpf.candlestick2_ohlc(ax, df['open'], df['high'], df['low'], df['close'],
-                              width=1, colorup='r', colordown='lime', alpha=0.75)
-
-        mpf.volume_overlay(ax2, df['open'], df['close'], df['volume'],
-                           colorup='r', colordown='lime', width=1, alpha=0.8)
+                              width=1, colorup='r', colordown='springgreen', alpha=0.75)
+        empty_arr = [0 for x in range(270 - len(df))]
+        df2 = {
+            'time': empty_arr,
+            'open': empty_arr,
+            'high': empty_arr,
+            'low': empty_arr,
+            'close': empty_arr,
+            'volume': empty_arr
+        }
+        df2 = pd.DataFrame(df2)
+        df3 = df.append(df2, ignore_index=True)
+        mpf.volume_overlay(ax2, df3['open'], df3['close'], df3['volume'],
+                           colorup='r', colordown='springgreen', width=1, alpha=0.8)
 
         # 畫均線圖
         sma_5 = abstract.SMA(df, 5)
@@ -148,7 +270,7 @@ class FugleKLinePlotter:
             stock_color = 'r'
             stock_mark = '▲'
         elif current_closed_price < self.last_closed:
-            stock_color = 'lime'
+            stock_color = 'springgreen'
             stock_mark = '▼'
         else:
             stock_color = 'ivory'
