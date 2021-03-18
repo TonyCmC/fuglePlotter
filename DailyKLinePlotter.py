@@ -88,14 +88,14 @@ class DailyKLinePlotter:
         df = pd.DataFrame.from_dict(self.arranged_dict)
         stock_name = stock_dict.get(self.stock_id)
         chart_title = '{name}({id})'.format(name=stock_name, id=self.stock_id)
-
+        plt.clf()
         fig = plt.figure(figsize=(10, 8))
         # 用add_axes創建副圖框
         ax = fig.add_axes([0.1, 0.3, 0.8, 0.6])
         ax2 = fig.add_axes([0.1, 0.1, 0.8, 0.2])
 
         data_length = len(df['close'])
-        ax2.set_xticks(range(0, data_length, int(data_length / 4)))
+        ax2.set_xticks(range(0, data_length, int(data_length / 3)))
         ax2.set_xticklabels([df['time'][int(data_length / 4) - 1],
                              df['time'][int(data_length / 4 * 2) - 1],
                              df['time'][int(data_length / 4 * 3) - 1],
@@ -115,13 +115,31 @@ class DailyKLinePlotter:
         upperband, middleband, lowerband = abstract.BBANDS(df['close'].astype(float), timeperiod=20, nbdevup=2.0,
                                                            nbdevdn=2.0, matype=0)
 
-        # ax.plot([0, len(df['close'])], [last_closed, last_closed])
         ax.plot(sma_5, label='5MA')
-        # ax.plot(sma_20, label='20MA')
         ax.plot(sma_60, label='60MA')
         ax.plot(upperband, label='BBAND', alpha=0.3)
         ax.plot(middleband, alpha=0.8)
         ax.plot(lowerband, alpha=0.3)
+
+        # 高低點標記
+        ymax = df['close'].max()
+        xmax = df['close'].idxmax()
+        ymin = df['close'].min()
+        xmin = df['close'].idxmin()
+
+        ax.annotate(str(ymax), xy=(xmax, ymax), xycoords='data',
+                    xytext=(0, 15), textcoords='offset points', color='r',
+                    bbox=dict(boxstyle='round,pad=0.2', fc='navy', alpha=0.3),
+                    arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0.95',
+                                    color='white'),
+                    horizontalalignment='right', verticalalignment='bottom', fontsize=15)
+        ax.annotate(str(ymin), xy=(xmin, ymin), xycoords='data',
+                    xytext=(0, -25), textcoords='offset points', color='springgreen',
+                    bbox=dict(boxstyle='round,pad=0.2', fc='navy', alpha=0.3),
+                    arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0.95',
+                                    color='white'),
+                    horizontalalignment='right', verticalalignment='bottom', fontsize=15)
+
         current_closed_price = df['close'][len(df['close']) - 1]
         last_closed = df['close'][len(df['close']) - 2]
 
@@ -157,3 +175,4 @@ class DailyKLinePlotter:
         file_name = self.stock_id + '-' + self.f_name
         fig.savefig('images/lower_{file_name}.png'.format(file_name=file_name), dpi=100)
         fig.savefig('images/{file_name}.png'.format(file_name=file_name))
+        plt.clf()

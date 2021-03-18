@@ -1,17 +1,22 @@
 [TELEGRAM]
+; TG Bot 的 Token
 ACCESS_TOKEN =
 
 [LINE]
+; LINE Bot 的 API Token及 Secret
 LINE_BOT_API =
 LINE_BOT_SECRET =
 
 [SERVER]
+; 此專案要準備可供 Line Bot / TG Bot callback用的位址
 SERVER_URL =
 
 [FUGLE]
+; 玉山 fugle 的 API domain 及 API Token
 API_URL =
 TOKEN =
 
 [HOST]
+; flask 啟動時的Host 及 Port
 HOST =
 PORT =

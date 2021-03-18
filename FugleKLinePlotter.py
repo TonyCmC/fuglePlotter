@@ -2,6 +2,7 @@ import configparser
 import datetime
 import json
 import operator
+import os
 import re
 
 import requests
@@ -12,6 +13,8 @@ import matplotlib.pyplot as plt
 import mpl_finance as mpf
 # 專門做『技術分析』的套件
 from talib import abstract
+
+from definitions import ROOT_DIR
 
 config = configparser.ConfigParser()
 config.read('config.ini')
@@ -26,13 +29,12 @@ class FugleKLinePlotter:
 
     api_url = config['FUGLE']['API_URL']
 
-    def __init__(self, stock_id, f_name):
+    def __init__(self, stock_id, file_name):
         self.stock_id = stock_id
         self.stock_name = ''
-        self.f_name = f_name
+        self.file_name = file_name
         self.data = {}
         self.market_time = datetime.datetime.now()
-        self.market_time_set = []
         self.last_closed = 0.0
         self.highest_price = 0.0
         self.lowest_price = 0.0
@@ -57,9 +59,10 @@ class FugleKLinePlotter:
     def logger(self, res_obj):
         res = res_obj
         today_date = datetime.datetime.today().strftime('%Y-%m-%d')
-        filename = 'logs/{date}-fugle-{filename}.log'.format(date=today_date,
-                                                              filename=self.get_endpoint_of_url(res.url))
-        with open(filename, mode='a', encoding='utf-8') as f:
+        endpoint_name = self.get_endpoint_of_url(res.url)
+        file_path = os.path.join(ROOT_DIR, 'logs/{date}-fugle-{filename}.log'.format(date=today_date,
+                                                                                     filename=endpoint_name))
+        with open(file_path, 'a', encoding='utf-8') as f:
             now_timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             f.write('=====================================\n')
             f.write("[{0}]".format(now_timestamp) + '\n')
@@ -156,11 +159,11 @@ class FugleKLinePlotter:
         title_diff = round(current_closed_price - self.last_closed, 2)
         title_diff_percent = round(title_diff / self.last_closed * 100, 2)
 
-        title = '  {name}({id})     {time}\n'.format(name=self.stock_name,
-                                                     id=self.stock_id,
-                                                     time=self.market_time)
+        title = '{name}({id})     {time}\n'.format(name=self.stock_name,
+                                                   id=self.stock_id,
+                                                   time=self.market_time)
 
-        sub_title = '  {price}   {mark}{diff} ({percent}%)    成交量: {volume}\n'.format(
+        sub_title = '{price}   {mark}{diff} ({percent}%)    成交量: {volume}\n'.format(
             volume=str(int(sum(current_volume_list))),
             price=current_closed_price,
             mark=stock_mark,
@@ -170,15 +173,14 @@ class FugleKLinePlotter:
 
         best_asks = order_list.get('bestAsks')
         best_bids = order_list.get('bestBids')
+
         ordered_best_bids = sorted(best_bids, key=operator.itemgetter('price'), reverse=True)
         result = title + sub_title + '-' * len(title) + '\n'
         for idx, bid in enumerate(ordered_best_bids):
-            result += '{vol} @ {price}\t|\t{vol_ask} @ {price_ask}\n'.format(vol=str(bid.get('unit')).rjust(5),
-                                                                             price=str(bid.get('price')).ljust(5),
-                                                                             vol_ask=str(
-                                                                                 best_asks[idx].get('unit')).rjust(5),
-                                                                             price_ask=str(
-                                                                                 best_asks[idx].get('price')).ljust(5))
+            buyer = '{vol} @ {price:.2f}'.format(vol=str(bid.get('unit')), price=bid.get('price'))
+            seller = '{vol_ask} @ {price_ask:.2f}'.format(vol_ask=str(best_asks[idx].get('unit')),
+                                                          price_ask=best_asks[idx].get('price'))
+            result += '{buyer:>15}\t|\t{seller:>15}\n'.format(buyer=buyer, seller=seller)
         return result
 
     def get_price_info_of_stock(self):
@@ -259,6 +261,25 @@ class FugleKLinePlotter:
         # 開盤價水平線
         ax.plot([0, 270], [self.last_closed, self.last_closed])
 
+        # 高低點標記
+        ymax = df['close'].max()
+        xmax = df['close'].idxmax()
+        ymin = df['close'].min()
+        xmin = df['close'].idxmin()
+
+        ax.annotate(str(ymax), xy=(xmax, ymax), xycoords='data',
+                    xytext=(0, 15), textcoords='offset points', color='r',
+                    bbox=dict(boxstyle='round,pad=0.2', fc='navy', alpha=0.3),
+                    arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0.95',
+                                    color='white'),
+                    horizontalalignment='right', verticalalignment='bottom', fontsize=15)
+        ax.annotate(str(ymin), xy=(xmin, ymin), xycoords='data',
+                    xytext=(0, -25), textcoords='offset points', color='springgreen',
+                    bbox=dict(boxstyle='round,pad=0.2', fc='navy', alpha=0.3),
+                    arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0.95',
+                                    color='white'),
+                    horizontalalignment='right', verticalalignment='bottom', fontsize=15)
+
         # 5MA + 30MA
         ax.plot(sma_5, label='5MA')
         ax.plot(sma_30, label='30MA')
@@ -281,21 +302,30 @@ class FugleKLinePlotter:
         title_diff = round(current_closed_price - self.last_closed, 2)
         title_diff_percent = round(title_diff / self.last_closed * 100, 2)
 
-        title = '{name}({id})                               {time}     \n'.format(name=self.stock_name,
-                                                                                  id=self.stock_id,
-                                                                                  time=self.market_time)
-        sub_title = '{price}   {mark}{diff} ({percent}%)                             成交量: {volume}'.format(
-            volume=str(int(sum(current_volume_list))),
+        stock_info = '{name}({id})'.format(name=self.stock_name, id=self.stock_id)
+        if len(stock_info) > 10:
+            space_fill = 83
+        else:
+            space_fill = 90
+        title = '{stock_info: <{fill}}{time}\n'.format(fill=space_fill - len(str(self.market_time)) - len(stock_info),
+                                                       stock_info=stock_info,
+                                                       time=self.market_time)
+
+        price_info = '{price}   {mark}{diff} ({percent}%)'.format(
             price=current_closed_price,
             mark=stock_mark,
             diff=title_diff,
             percent=title_diff_percent)
-        plt.suptitle(sub_title, x=0.385, y=0.93, size='xx-large', color=stock_color)
+
+        sub_title = '{price_info:<90}成交量: {volume}'.format(
+            price_info=price_info,
+            volume=str(int(sum(current_volume_list))))
+
+        plt.suptitle(sub_title, y=0.93, size='xx-large', color=stock_color)
         title_obj = ax.set_title(title, loc='Left', pad=0.5)
-        # plt.getp(title_obj)  # print out the properties of title
-        # plt.getp(title_obj, 'text')  # print out the 'text' property for title
         plt.setp(title_obj, color='ivory')  # set the color of title to red
-        ax.legend(fontsize='x-large')
-        file_name = self.stock_id + '-' + self.f_name
+        ax.legend(fontsize='x-large', loc=2)
+        file_name = self.stock_id + '-' + self.file_name
         fig.savefig('images/lower_{file_name}.png'.format(file_name=file_name), dpi=100)
         fig.savefig('images/{file_name}.png'.format(file_name=file_name))
+        plt.clf()
