@@ -1,0 +1,1 @@
+activate pyvenv37 && python job_planner.py
